@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="ja" class="h-full bg-slate-950">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音声操作 野球スコアボード Pro</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .digital-font {
+            font-family: 'Chakra Petch', sans-serif;
+        }
+        /* LED Indicator styles */
+        .led-dot {
+            width: 1.25rem;
+            height: 1.25rem;
+            border-radius: 9999px;
+            background-color: #1e293b;
+            border: 2px solid #334155;
+            transition: all 0.2s ease-in-out;
+        }
+        .led-b.active { background-color: #22c55e; box-shadow: 0 0 12px #22c55e; border-color: #4ade80; }
+        .led-s.active { background-color: #eab308; box-shadow: 0 0 12px #eab308; border-color: #facc15; }
+        .led-o.active { background-color: #ef4444; box-shadow: 0 0 12px #ef4444; border-color: #f87171; }
+
+        /* Runner base indicator styles */
+        .runner-base {
+            background-color: #1e293b;
+            border: 2px solid #475569;
+            transition: all 0.2s ease-in-out;
+        }
+        .runner-base.active {
+            background-color: #eab308;
+            border-color: #fef08a;
+            box-shadow: 0 0 10px #eab308;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            height: 6px;
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+        /* Pulse animation for mic */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        .mic-active {
+            animation: pulse-ring 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="h-full text-slate-100 flex flex-col justify-between max-w-md md:max-w-4xl mx-auto shadow-2xl bg-slate-950 border-x border-slate-800">
+
+    <!-- HEADER / APP TITLE -->
+    <header class="bg-slate-900 border-b border-slate-800 p-2.5 md:p-3 flex justify-between items-center sticky top-0 z-30">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid font-bold text-amber-500 fa-baseball-bat-ball text-xl"></i>
+            <h1 class="font-bold text-base md:text-lg text-slate-100 tracking-wide">VOICE SCOREBOARD</h1>
+        </div>
+        <div class="flex items-center gap-1.5 md:gap-2">
+            <button id="line-share-btn" onclick="openLineModal()" class="px-2.5 py-1.5 text-xs bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 rounded-lg border border-emerald-500/40 transition flex items-center gap-1">
+                <i class="fa-brands fa-line text-emerald-400"></i> LINE共有
+            </button>
+            <button id="gameset-btn" onclick="openGamesetModal()" class="px-2.5 py-1.5 text-xs bg-purple-600/30 hover:bg-purple-600/50 text-purple-300 rounded-lg border border-purple-500/40 transition flex items-center gap-1">
+                <i class="fa-solid fa-flag-checkered"></i> 試合終了
+            </button>
+            <button id="reset-btn" class="px-2.5 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition flex items-center gap-1">
+                <i class="fa-solid fa-rotate-left"></i>
+            </button>
+            <button id="help-btn" class="px-2.5 py-1.5 text-xs bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 rounded-lg border border-amber-500/40 transition flex items-center gap-1">
+                <i class="fa-solid fa-circle-question"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN SCOREBOARD CONTAINER -->
+    <main class="p-3 md:p-6 space-y-4 flex-1 overflow-y-auto">
+
+        <!-- SCORE BOARD TOP PANEL -->
+        <div class="bg-slate-900/90 rounded-2xl p-3 md:p-5 border border-slate-800 shadow-xl relative overflow-hidden">
+            <!-- Glow effect background -->
+            <div class="absolute -top-10 -right-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <!-- INNING & TEAMS DISPLAY -->
+            <div class="flex justify-between items-center mb-3 pb-2 border-b border-slate-800/80">
+                <div class="flex items-center gap-2">
+                    <span id="current-inning-display" class="bg-emerald-500/20 text-emerald-400 font-bold px-3 py-1 rounded-full border border-emerald-500/30 text-sm md:text-base flex items-center gap-1 cursor-pointer" onclick="nextHalfInning()">
+                        <i class="fa-solid fa-caret-up" id="inning-arrow"></i>
+                        <span id="inning-text">1回表</span>
+                    </span>
+                    <span class="text-xs text-slate-400">攻撃: <strong id="attacking-team-name" class="text-slate-200">先攻</strong></span>
+                </div>
+                <div class="text-xs font-mono text-slate-400" id="clock-display">00:00</div>
+            </div>
+
+            <!-- MAIN INNINGS TABLE (12 INNINGS SUPPORT WITH STICKY HEADERS/COLUMNS) -->
+            <div class="overflow-x-auto mb-4 border border-slate-800 rounded-xl bg-slate-950/40">
+                <table class="w-full text-center border-collapse min-w-[580px]">
+                    <thead>
+                        <tr class="text-slate-400 text-xs border-b border-slate-800 bg-slate-900/80">
+                            <th class="p-1.5 text-left font-semibold w-24 sticky left-0 bg-slate-900 z-10 border-r border-slate-800">チーム</th>
+                            <th class="p-1.5 w-6">1</th>
+                            <th class="p-1.5 w-6">2</th>
+                            <th class="p-1.5 w-6">3</th>
+                            <th class="p-1.5 w-6">4</th>
+                            <th class="p-1.5 w-6">5</th>
+                            <th class="p-1.5 w-6">6</th>
+                            <th class="p-1.5 w-6">7</th>
+                            <th class="p-1.5 w-6">8</th>
+                            <th class="p-1.5 w-6">9</th>
+                            <th class="p-1.5 w-6 bg-slate-800/30">10</th>
+                            <th class="p-1.5 w-6 bg-slate-800/30">11</th>
+                            <th class="p-1.5 w-6 bg-slate-800/30 border-r border-slate-800">12</th>
+                            <th class="p-1.5 w-9 text-amber-400 bg-slate-800/60">R</th>
+                            <th class="p-1.5 w-8 text-blue-400">H</th>
+                            <th class="p-1.5 w-8 text-red-400">E</th>
+                        </tr>
+                    </thead>
+                    <tbody class="digital-font text-base md:text-lg">
+                        <!-- Visitor (Top) -->
+                        <tr id="team-visitor-row" class="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
+                            <td class="p-1 text-left font-sans font-bold text-sm text-slate-200 truncate sticky left-0 bg-slate-900 z-10 border-r border-slate-800">
+                                <input type="text" value="先攻チーム" id="team-v-name" class="bg-transparent w-full focus:outline-none focus:border-b focus:border-emerald-500">
+                            </td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 1)" data-team="v" data-inning="1">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 2)" data-team="v" data-inning="2">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 3)" data-team="v" data-inning="3">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 4)" data-team="v" data-inning="4">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 5)" data-team="v" data-inning="5">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 6)" data-team="v" data-inning="6">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 7)" data-team="v" data-inning="7">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 8)" data-team="v" data-inning="8">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('v', 9)" data-team="v" data-inning="9">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded bg-slate-800/20" onclick="promptScore('v', 10)" data-team="v" data-inning="10">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded bg-slate-800/20" onclick="promptScore('v', 11)" data-team="v" data-inning="11">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded bg-slate-800/20 border-r border-slate-800" onclick="promptScore('v', 12)" data-team="v" data-inning="12">-</td>
+                            <td class="p-1 font-bold text-amber-400 bg-slate-800/80 text-lg md:text-xl" id="v-runs">0</td>
+                            <td class="p-1 font-bold text-blue-400" id="v-hits">0</td>
+                            <td class="p-1 font-bold text-red-400" id="v-errors">0</td>
+                        </tr>
+                        <!-- Home (Bottom) -->
+                        <tr id="team-home-row" class="hover:bg-slate-800/30 transition">
+                            <td class="p-1 text-left font-sans font-bold text-sm text-slate-200 truncate sticky left-0 bg-slate-900 z-10 border-r border-slate-800">
+                                <input type="text" value="後攻チーム" id="team-h-name" class="bg-transparent w-full focus:outline-none focus:border-b focus:border-emerald-500">
+                            </td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 1)" data-team="h" data-inning="1">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 2)" data-team="h" data-inning="2">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 3)" data-team="h" data-inning="3">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 4)" data-team="h" data-inning="4">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 5)" data-team="h" data-inning="5">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 6)" data-team="h" data-inning="6">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 7)" data-team="h" data-inning="7">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 8)" data-team="h" data-inning="8">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded" onclick="promptScore('h', 9)" data-team="h" data-inning="9">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded bg-slate-800/20" onclick="promptScore('h', 10)" data-team="h" data-inning="10">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded bg-slate-800/20" onclick="promptScore('h', 11)" data-team="h" data-inning="11">-</td>
+                            <td class="p-1 score-cell cursor-pointer hover:bg-slate-700/50 rounded bg-slate-800/20 border-r border-slate-800" onclick="promptScore('h', 12)" data-team="h" data-inning="12">-</td>
+                            <td class="p-1 font-bold text-amber-400 bg-slate-800/80 text-lg md:text-xl" id="h-runs">0</td>
+                            <td class="p-1 font-bold text-blue-400" id="h-hits">0</td>
+                            <td class="p-1 font-bold text-red-400" id="h-errors">0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- BSO & RUNNERS & STATS ROW -->
+            <div class="grid grid-cols-12 gap-3 items-center bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+
+                <!-- BSO COUNTER -->
+                <div class="col-span-6 border-r border-slate-800 pr-2 space-y-2">
+                    <!-- Ball -->
+                    <div class="flex items-center gap-3 cursor-pointer" onclick="handleCommand('ball')">
+                        <span class="font-bold text-green-500 text-sm w-4">B</span>
+                        <div class="flex gap-1.5">
+                            <div class="led-dot led-b" id="b-1"></div>
+                            <div class="led-dot led-b" id="b-2"></div>
+                            <div class="led-dot led-b" id="b-3"></div>
+                        </div>
+                    </div>
+                    <!-- Strike -->
+                    <div class="flex items-center gap-3 cursor-pointer" onclick="handleCommand('strike')">
+                        <span class="font-bold text-yellow-500 text-sm w-4">S</span>
+                        <div class="flex gap-1.5">
+                            <div class="led-dot led-s" id="s-1"></div>
+                            <div class="led-dot led-s" id="s-2"></div>
+                        </div>
+                    </div>
+                    <!-- Out -->
+                    <div class="flex items-center gap-3 cursor-pointer" onclick="handleCommand('out')">
+                        <span class="font-bold text-red-500 text-sm w-4">O</span>
+                        <div class="flex gap-1.5">
+                            <div class="led-dot led-o" id="o-1"></div>
+                            <div class="led-dot led-o" id="o-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RUNNERS DIAMOND -->
+                <div class="col-span-6 flex flex-col items-center justify-center relative py-1">
+                    <div class="w-16 h-16 relative rotate-45 border-2 border-slate-700 bg-slate-900/50 my-1">
+                        <!-- 2nd Base -->
+                        <div id="base-2" onclick="toggleRunner(1)" class="runner-base absolute -top-2.5 -left-2.5 w-5 h-5 cursor-pointer"></div>
+                        <!-- 3rd Base -->
+                        <div id="base-3" onclick="toggleRunner(2)" class="runner-base absolute -bottom-2.5 -left-2.5 w-5 h-5 cursor-pointer"></div>
+                        <!-- 1st Base -->
+                        <div id="base-1" onclick="toggleRunner(0)" class="runner-base absolute -top-2.5 -right-2.5 w-5 h-5 cursor-pointer"></div>
+                    </div>
+                    <span class="text-[10px] text-slate-400 mt-1">走者状況（タップ切替）</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- VOICE INPUT CONTROL BAR -->
+        <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 p-4 rounded-2xl border border-slate-700/60 shadow-lg text-center relative overflow-hidden">
+            <div id="pulse-bg" class="absolute inset-0 bg-emerald-500/10 opacity-0 transition-opacity duration-300 pointer-events-none"></div>
+
+            <div class="flex flex-col items-center gap-3 relative z-10">
+                <!-- VOICE MIC BUTTON -->
+                <button id="mic-btn" onclick="toggleSpeechRecognition()" class="w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-950/60 transition-all transform active:scale-95 border-4 border-slate-900 cursor-pointer">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+
+                <div>
+                    <p id="voice-status" class="text-xs font-bold text-slate-400 uppercase tracking-wider">マイクを押して音声操作開始</p>
+                    <p id="transcript-preview" class="text-sm font-semibold text-emerald-400 h-6 mt-1 flex items-center justify-center gap-2">
+                        <span>「ストライク」「ヒット」「2点」「チェンジ」...</span>
+                    </p>
+                </div>
+            </div>
+            
+            <!-- HTTPS WARNING BANNER -->
+            <div id="https-warning" class="hidden mt-3 p-2 bg-red-900/50 border border-red-700/60 rounded-lg text-[11px] text-red-200">
+                <i class="fa-solid fa-triangle-exclamation mr-1 text-red-400"></i>
+                スマホ等の実機で音声認識を使うには、<strong>HTTPS環境（SSL保護）</strong>での公開・アクセスが必要です。
+            </div>
+        </div>
+
+        <!-- MANUAL QUICK ACTION BUTTONS -->
+        <div class="space-y-2">
+            <h3 class="text-xs font-bold text-slate-400 px-1 uppercase tracking-wider">手動クイック操作</h3>
+            <div class="grid grid-cols-4 gap-2 text-xs">
+                <button onclick="handleCommand('ball')" class="p-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-700 text-center font-bold text-green-400">
+                    ボール (B)
+                </button>
+                <button onclick="handleCommand('strike')" class="p-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-700 text-center font-bold text-yellow-400">
+                    ストライク (S)
+                </button>
+                <button onclick="handleCommand('out')" class="p-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-700 text-center font-bold text-red-400">
+                    アウト (O)
+                </button>
+                
+                <!-- 安打（ヒット）選択メニュー付きボタン -->
+                <div class="relative">
+                    <button id="hit-menu-btn" onclick="toggleHitMenu()" class="w-full h-full p-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-700 text-center font-bold text-blue-400 flex items-center justify-center gap-1">
+                        安打 <i class="fa-solid fa-caret-down text-[10px]"></i>
+                    </button>
+                    <!-- 安打種別ドロップダウン -->
+                    <div id="hit-menu" class="hidden absolute bottom-full left-0 mb-1 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-20 overflow-hidden py-1">
+                        <button onclick="handleCommand('hit_1')" class="w-full px-3 py-2 text-left hover:bg-slate-800 text-blue-400 font-bold text-xs flex items-center justify-between">
+                            <span>単打 (1B)</span>
+                        </button>
+                        <button onclick="handleCommand('hit_2')" class="w-full px-3 py-2 text-left hover:bg-slate-800 text-cyan-400 font-bold text-xs flex items-center justify-between">
+                            <span>２ベース</span>
+                        </button>
+                        <button onclick="handleCommand('hit_3')" class="w-full px-3 py-2 text-left hover:bg-slate-800 text-teal-400 font-bold text-xs flex items-center justify-between">
+                            <span>３ベース</span>
+                        </button>
+                        <button onclick="handleCommand('hit_hr')" class="w-full px-3 py-2 text-left hover:bg-slate-800 text-amber-400 font-bold text-xs flex items-center justify-between border-t border-slate-800">
+                            <span>ホームラン</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-4 gap-2 text-xs">
+                <button onclick="handleCommand('run_plus')" class="p-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-700 text-center font-bold text-amber-400">
+                    +1 得点
+                </button>
+                <button onclick="handleCommand('error')" class="p-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-700 text-center font-bold text-orange-400">
+                    失策 (E)
+                </button>
+                <button onclick="handleCommand('change')" class="p-2.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 rounded-xl border border-slate-700 text-center font-bold text-purple-400">
+                    チェンジ
+                </button>
+                <button onclick="openGamesetModal()" class="p-2.5 bg-purple-900/40 hover:bg-purple-800/60 active:bg-purple-700/60 rounded-xl border border-purple-700/60 text-center font-bold text-purple-300">
+                    ゲームセット
+                </button>
+            </div>
+        </div>
+
+        <!-- VOICE COMMAND & ACTION LOG -->
+        <div class="bg-slate-900 rounded-xl p-3 border border-slate-800">
+            <h3 class="text-xs font-bold text-slate-400 mb-2 flex justify-between items-center">
+                <span><i class="fa-solid fa-list-ul mr-1"></i> 操作・発話履歴</span>
+                <button id="clear-log-btn" class="text-[10px] text-slate-500 hover:text-slate-300">クリア</button>
+            </h3>
+            <div id="command-log" class="text-xs font-mono text-slate-400 h-28 overflow-y-auto space-y-1">
+                <div class="text-slate-600 italic">操作ログおよび音声発話内容がここに表示されます</div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- LINE SHARE / TEXT EXPORT MODAL -->
+    <div id="line-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 shadow-2xl relative space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <h3 class="font-bold text-emerald-400 text-base flex items-center gap-2">
+                    <i class="fa-brands fa-line text-lg"></i> LINE送信用テキスト書き出し
+                </h3>
+                <button onclick="closeLineModal()" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            
+            <p class="text-xs text-slate-400">
+                以下のテキストをコピーしてLINE等のトーク画面に直接送信できます。
+            </p>
+
+            <textarea id="line-export-text" readonly class="w-full h-44 bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs font-mono text-slate-300 focus:outline-none resize-none"></textarea>
+
+            <div class="flex gap-2">
+                <button onclick="copyLineText()" class="flex-1 py-2 text-xs bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-1 shadow-lg shadow-emerald-900/40">
+                    <i class="fa-regular fa-copy"></i> クリップボードにコピー
+                </button>
+                <button onclick="closeLineModal()" class="px-4 py-2 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 font-bold transition">
+                    閉じる
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME SET CONFIRM MODAL -->
+    <div id="gameset-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xs w-full p-5 shadow-2xl space-y-4 text-center">
+            <div class="w-12 h-12 bg-purple-500/20 text-purple-400 rounded-full flex items-center justify-center mx-auto text-xl border border-purple-500/30">
+                <i class="fa-solid fa-flag-checkered"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-slate-100 text-base">試合を終了しますか？</h3>
+                <p class="text-xs text-slate-400 mt-1" id="gameset-modal-desc">
+                    ゲームセットの処理を行います。裏のイニングで後攻チームがリードしている場合はサヨナラ（X）表記となります。
+                </p>
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button onclick="closeGamesetModal()" class="flex-1 py-2 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 font-bold transition">
+                    キャンセル
+                </button>
+                <button onclick="confirmGameSet()" class="flex-1 py-2 text-xs bg-purple-600 hover:bg-purple-500 text-white rounded-xl font-bold transition shadow-lg shadow-purple-900/40">
+                    試合終了
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HELP MODAL -->
+    <div id="help-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-5 shadow-2xl relative space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <h3 class="font-bold text-amber-400 text-base"><i class="fa-solid fa-headset mr-2"></i>音声コマンド一覧</h3>
+                <button id="close-modal-btn" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="text-xs space-y-3 max-h-80 overflow-y-auto pr-1 text-slate-300">
+                <div>
+                    <h4 class="font-bold text-slate-100 mb-1 border-l-2 border-emerald-500 pl-2">カウント操作</h4>
+                    <p class="text-slate-400">「ストライク」「ボール」「アウト」「ファール」</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-slate-100 mb-1 border-l-2 border-blue-500 pl-2">打席結果・安打</h4>
+                    <p class="text-slate-400">「ヒット」「単打」「ツーベース」「スリーベース」「ホームラン」「エラー」「フォアボール」「デッドボール」</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-slate-100 mb-1 border-l-2 border-amber-500 pl-2">得点・イニング・試合</h4>
+                    <p class="text-slate-400">「1点」「2点」「チェンジ」「ゲームセット」「1回表」「10回裏」</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-slate-100 mb-1 border-l-2 border-purple-500 pl-2">走者状況</h4>
+                    <p class="text-slate-400">「ランナー1塁」「満塁」「ランナーなし」</p>
+                </div>
+            </div>
+            <p class="text-[11px] text-slate-500 bg-slate-950 p-2 rounded border border-slate-800">
+                ※「マイク」ボタンを押すと音声認識がスタートします。
+            </p>
+        </div>
+    </div>
+
+    <!-- RESET CONFIRMATION MODAL -->
+    <div id="reset-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-xs w-full p-5 shadow-2xl space-y-4 text-center">
+            <div class="w-12 h-12 bg-red-500/20 text-red-400 rounded-full flex items-center justify-center mx-auto text-xl border border-red-500/30">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <div>
+                <h3 class="font-bold text-slate-100 text-base">スコアをリセットしますか？</h3>
+                <p class="text-xs text-slate-400 mt-1">すべてのスコア、カウント、走者情報およびログが消去されます。</p>
+            </div>
+            <div class="flex gap-2 pt-2">
+                <button id="cancel-reset-btn" class="flex-1 py-2 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl border border-slate-700 font-bold transition">
+                    キャンセル
+                </button>
+                <button id="confirm-reset-btn" class="flex-1 py-2 text-xs bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition shadow-lg shadow-red-900/40">
+                    リセット実行
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- GAME STATE ---
+        const MAX_INNINGS = 12;
+
+        const state = {
+            inning: 1,           // 1 to 12
+            isTop: true,         // true = 先攻(表), false = 後攻(裏)
+            isGameSet: false,    // 試合終了フラグ
+            balls: 0,
+            strikes: 0,
+            outs: 0,
+            runners: [false, false, false], // [1B, 2B, 3B]
+            scores: {
+                v: Array(MAX_INNINGS).fill(null), // Visitor scores
+                h: Array(MAX_INNINGS).fill(null)  // Home scores
+            },
+            hits: { v: 0, h: 0 },
+            errors: { v: 0, h: 0 },
+            isListening: false
+        };
+
+        // --- DISPLAY & LOGIC FUNCTIONS ---
+        function getCurrentTeamKey() {
+            return state.isTop ? 'v' : 'h';
+        }
+
+        function calculateTotals() {
+            let vTotal = 0;
+            let hTotal = 0;
+
+            for (let i = 0; i < MAX_INNINGS; i++) {
+                const vVal = state.scores.v[i];
+                const hVal = state.scores.h[i];
+
+                if (vVal !== null) {
+                    const num = parseInt(vVal, 10);
+                    if (!isNaN(num)) vTotal += num;
+                }
+                if (hVal !== null) {
+                    const num = parseInt(hVal, 10);
+                    if (!isNaN(num)) hTotal += num;
+                }
+            }
+
+            return { vTotal, hTotal };
+        }
+
+        function updateDisplay() {
+            // 1. Update Inning Display
+            const topBottom = state.isTop ? "表" : "裏";
+            const inningTextEl = document.getElementById('inning-text');
+            const inningArrowEl = document.getElementById('inning-arrow');
+
+            if (state.isGameSet) {
+                inningTextEl.innerText = "試合終了";
+                inningArrowEl.className = "fa-solid fa-flag-checkered";
+            } else {
+                inningTextEl.innerText = `${state.inning}回${topBottom}`;
+                inningArrowEl.className = state.isTop ? "fa-solid fa-caret-up" : "fa-solid fa-caret-down";
+            }
+            
+            const vName = document.getElementById('team-v-name').value || "先攻";
+            const hName = document.getElementById('team-h-name').value || "後攻";
+            document.getElementById('attacking-team-name').innerText = state.isGameSet ? "終了" : (state.isTop ? vName : hName);
+
+            // Row highlighting
+            if (state.isGameSet) {
+                document.getElementById('team-visitor-row').className = "border-b border-slate-800/50";
+                document.getElementById('team-home-row').className = "";
+            } else {
+                document.getElementById('team-visitor-row').className = state.isTop ? "bg-slate-800/60 font-bold border-b border-slate-800" : "border-b border-slate-800/50 opacity-75";
+                document.getElementById('team-home-row').className = !state.isTop ? "bg-slate-800/60 font-bold" : "opacity-75";
+            }
+
+            // 2. Update Inning Scores (Up to 12 Innings)
+            for (let i = 1; i <= MAX_INNINGS; i++) {
+                const vVal = state.scores.v[i - 1];
+                const hVal = state.scores.h[i - 1];
+                
+                const vCell = document.querySelector(`.score-cell[data-team="v"][data-inning="${i}"]`);
+                const hCell = document.querySelector(`.score-cell[data-team="h"][data-inning="${i}"]`);
+                
+                if (vCell) vCell.innerText = vVal !== null ? vVal : '-';
+                if (hCell) hCell.innerText = hVal !== null ? hVal : '-';
+            }
+
+            const { vTotal, hTotal } = calculateTotals();
+
+            document.getElementById('v-runs').innerText = vTotal;
+            document.getElementById('h-runs').innerText = hTotal;
+            document.getElementById('v-hits').innerText = state.hits.v;
+            document.getElementById('h-hits').innerText = state.hits.h;
+            document.getElementById('v-errors').innerText = state.errors.v;
+            document.getElementById('h-errors').innerText = state.errors.h;
+
+            // 3. Update BSO Indicators
+            for (let i = 1; i <= 3; i++) {
+                const bDot = document.getElementById(`b-${i}`);
+                if (bDot) bDot.className = i <= state.balls ? "led-dot led-b active" : "led-dot led-b";
+            }
+            for (let i = 1; i <= 2; i++) {
+                const sDot = document.getElementById(`s-${i}`);
+                if (sDot) sDot.className = i <= state.strikes ? "led-dot led-s active" : "led-dot led-s";
+            }
+            for (let i = 1; i <= 2; i++) {
+                const oDot = document.getElementById(`o-${i}`);
+                if (oDot) oDot.className = i <= state.outs ? "led-dot led-o active" : "led-dot led-o";
+            }
+
+            // 4. Update Runner Bases
+            document.getElementById('base-1').className = state.runners[0] ? "runner-base active absolute -top-2.5 -right-2.5 w-5 h-5 cursor-pointer" : "runner-base absolute -top-2.5 -right-2.5 w-5 h-5 cursor-pointer";
+            document.getElementById('base-2').className = state.runners[1] ? "runner-base active absolute -top-2.5 -left-2.5 w-5 h-5 cursor-pointer" : "runner-base absolute -top-2.5 -left-2.5 w-5 h-5 cursor-pointer";
+            document.getElementById('base-3').className = state.runners[2] ? "runner-base active absolute -bottom-2.5 -left-2.5 w-5 h-5 cursor-pointer" : "runner-base absolute -bottom-2.5 -left-2.5 w-5 h-5 cursor-pointer";
+        }
+
+        function logCommand(text) {
+            const logContainer = document.getElementById('command-log');
+            if (logContainer.children.length === 1 && logContainer.children[0].classList.contains('italic')) {
+                logContainer.innerHTML = '';
+            }
+            const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const item = document.createElement('div');
+            item.className = "flex justify-between items-center text-slate-300 border-b border-slate-800/40 pb-0.5";
+            
+            if (text.startsWith('【音声】')) {
+                item.innerHTML = `<span class="text-emerald-400 font-semibold">${text}</span><span class="text-[10px] text-slate-500">${time}</span>`;
+            } else {
+                item.innerHTML = `<span>${text}</span><span class="text-[10px] text-slate-500">${time}</span>`;
+            }
+            logContainer.prepend(item);
+        }
+
+        function addBall() {
+            if (state.isGameSet) return;
+            state.balls++;
+            if (state.balls >= 4) {
+                logCommand("フォアボール！");
+                advanceRunnersOnWalk();
+                resetBSO();
+            } else {
+                logCommand(`ボール (${state.balls}B)`);
+            }
+            updateDisplay();
+        }
+
+        function addStrike() {
+            if (state.isGameSet) return;
+            state.strikes++;
+            if (state.strikes >= 3) {
+                logCommand("三振！");
+                addOut();
+            } else {
+                logCommand(`ストライク (${state.strikes}S)`);
+                updateDisplay();
+            }
+        }
+
+        function addOut() {
+            if (state.isGameSet) return;
+            state.outs++;
+            state.balls = 0;
+            state.strikes = 0;
+            if (state.outs >= 3) {
+                logCommand("3アウト チェンジ！");
+                nextHalfInning();
+            } else {
+                logCommand(`アウト (${state.outs}O)`);
+                updateDisplay();
+            }
+        }
+
+        function resetBSO() {
+            state.balls = 0;
+            state.strikes = 0;
+        }
+
+        function toggleRunner(baseIndex) {
+            if (state.isGameSet) return;
+            state.runners[baseIndex] = !state.runners[baseIndex];
+            const baseNames = ["1塁", "2塁", "3塁"];
+            logCommand(`走者状況変更: ${baseNames[baseIndex]} ${state.runners[baseIndex] ? 'ON' : 'OFF'}`);
+            updateDisplay();
+        }
+
+        function advanceRunnersOnWalk() {
+            if (!state.runners[0]) {
+                state.runners[0] = true;
+            } else if (!state.runners[1]) {
+                state.runners[1] = true;
+            } else if (!state.runners[2]) {
+                state.runners[2] = true;
+            } else {
+                addScore(1);
+                logCommand("押し出しフォアボール！ 1点加点");
+            }
+        }
+
+        function handleHit(type) {
+            if (state.isGameSet) return;
+            const key = getCurrentTeamKey();
+            state.hits[key]++;
+            resetBSO();
+
+            let runsScored = 0;
+
+            if (type === '1B') {
+                logCommand("ヒット（単打）！");
+                if (state.runners[2]) { runsScored++; state.runners[2] = false; }
+                if (state.runners[1]) { state.runners[2] = true; state.runners[1] = false; }
+                if (state.runners[0]) { state.runners[1] = true; }
+                state.runners[0] = true;
+            } else if (type === '2B') {
+                logCommand("ツーベースヒット！");
+                if (state.runners[2]) { runsScored++; state.runners[2] = false; }
+                if (state.runners[1]) { runsScored++; state.runners[1] = false; }
+                if (state.runners[0]) { state.runners[2] = true; state.runners[0] = false; }
+                state.runners[1] = true;
+            } else if (type === '3B') {
+                logCommand("スリーベースヒット！");
+                for (let i = 0; i < 3; i++) {
+                    if (state.runners[i]) {
+                        runsScored++;
+                        state.runners[i] = false;
+                    }
+                }
+                state.runners[2] = true;
+            } else if (type === 'HR') {
+                logCommand("ホームラン（本塁打）！");
+                runsScored = 1;
+                for (let i = 0; i < 3; i++) {
+                    if (state.runners[i]) {
+                        runsScored++;
+                    }
+                }
+                state.runners = [false, false, false];
+            }
+
+            if (runsScored > 0) {
+                addScore(runsScored);
+                logCommand(`${runsScored}点追加！`);
+            }
+            updateDisplay();
+        }
+
+        function addScore(amount) {
+            if (state.isGameSet) return;
+            const key = getCurrentTeamKey();
+            const currentInningIdx = state.inning - 1;
+            
+            let currentVal = state.scores[key][currentInningIdx];
+            let numVal = 0;
+
+            if (currentVal !== null) {
+                numVal = parseInt(currentVal, 10) || 0;
+            }
+
+            let newVal = numVal + amount;
+            state.scores[key][currentInningIdx] = newVal;
+            updateDisplay();
+        }
+
+        function promptScore(teamKey, inningNum) {
+            const currentVal = state.scores[teamKey][inningNum - 1];
+            const teamName = teamKey === 'v' ? '先攻' : '後攻';
+            const input = prompt(`${teamName} ${inningNum}回の得点を入力してください (※サヨナラの場合は「1x」「x」なども可):`, currentVal !== null ? currentVal : 0);
+            
+            if (input !== null) {
+                const trimmed = input.trim();
+                if (trimmed === '') {
+                    state.scores[teamKey][inningNum - 1] = null;
+                } else {
+                    state.scores[teamKey][inningNum - 1] = trimmed;
+                }
+                logCommand(`${teamName}${inningNum}回 スコア修正: ${trimmed}`);
+                updateDisplay();
+            }
+        }
+
+        function checkColdGameRule() {
+            const totals = calculateTotals();
+            const diff = Math.abs(totals.vTotal - totals.hTotal);
+            const currentInning = state.inning;
+
+            // 4回終了時（または表終了時に後攻リード時）: 10点差
+            // 5回〜11回終了時（または表終了時に後攻リード時）: 7点差
+            if (currentInning === 4 && diff >= 10) {
+                if (!state.isTop || (state.isTop && totals.hTotal > totals.vTotal)) {
+                    triggerGameSet(`4回 10点差コールドゲーム！ (${totals.vTotal} - ${totals.hTotal})`);
+                    return true;
+                }
+            } else if (currentInning >= 5 && currentInning < MAX_INNINGS && diff >= 7) {
+                if (!state.isTop || (state.isTop && totals.hTotal > totals.vTotal)) {
+                    triggerGameSet(`${currentInning}回 7点差コールドゲーム！ (${totals.vTotal} - ${totals.hTotal})`);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function nextHalfInning() {
+            if (state.isGameSet) return;
+
+            state.balls = 0;
+            state.strikes = 0;
+            state.outs = 0;
+            state.runners = [false, false, false];
+
+            const currentKey = getCurrentTeamKey();
+            const currentInningIdx = state.inning - 1;
+
+            if (state.scores[currentKey][currentInningIdx] === null) {
+                state.scores[currentKey][currentInningIdx] = 0;
+            }
+
+            if (state.isTop) {
+                // 表 -> 裏
+                state.isTop = false;
+
+                // コールドゲーム判定（表終了時に後攻が条件以上のリード）
+                if (checkColdGameRule()) return;
+
+                // 9回裏以降で後攻がリードしている場合の自動省略チェック（裏の攻撃不要）
+                const totals = calculateTotals();
+                if (state.inning >= 9 && totals.hTotal > totals.vTotal) {
+                    state.scores.h[currentInningIdx] = 'x';
+                    logCommand(`${state.inning}回裏 後攻リードのため攻撃省略 (x)`);
+                    updateDisplay();
+                    triggerGameSet(`${totals.hTotal} - ${totals.vTotal} で試合終了！`);
+                    return;
+                }
+            } else {
+                // コールドゲーム判定（裏終了時）
+                if (checkColdGameRule()) return;
+
+                // 裏 -> 次のイニング表
+                state.isTop = true;
+                if (state.inning < MAX_INNINGS) {
+                    state.inning++;
+                } else {
+                    // 12回裏終了
+                    logCommand(`規定の${MAX_INNINGS}回が終了しました。`);
+                    updateDisplay();
+                    triggerGameSet(`規定の${MAX_INNINGS}回が終了しました。`);
+                    return;
+                }
+            }
+            logCommand(`イニングチェンジ: ${state.inning}回${state.isTop ? '表' : '裏'}`);
+            updateDisplay();
+        }
+
+        function triggerGameSet(reason) {
+            state.isGameSet = true;
+            state.balls = 0;
+            state.strikes = 0;
+            state.outs = 0;
+            state.runners = [false, false, false];
+
+            const totals = calculateTotals();
+            const vName = document.getElementById('team-v-name').value || "先攻";
+            const hName = document.getElementById('team-h-name').value || "後攻";
+
+            // 試合終了ボタンが押された時、またはゲームセット時に裏の攻撃中＆後攻リードならサヨナラ(x)表記処理
+            if (!state.isTop && totals.hTotal > totals.vTotal) {
+                const currentIdx = state.inning - 1;
+                const val = state.scores.h[currentIdx];
+                if (val !== null) {
+                    const strVal = String(val);
+                    if (!strVal.toLowerCase().includes('x')) {
+                        state.scores.h[currentIdx] = `${val}x`;
+                    }
+                } else {
+                    state.scores.h[currentIdx] = 'x';
+                }
+            }
+
+            logCommand(`【ゲームセット】 ${reason || ''}`);
+            logCommand(`最終スコア: ${vName} ${totals.vTotal} - ${totals.hTotal} ${hName}`);
+            updateDisplay();
+        }
+
+        function handleCommand(cmd) {
+            closeHitMenu();
+            if (state.isGameSet && cmd !== 'clear_bso') return;
+
+            if (cmd === 'ball') addBall();
+            else if (cmd === 'strike') addStrike();
+            else if (cmd === 'out') addOut();
+            else if (cmd === 'hit_1') handleHit('1B');
+            else if (cmd === 'hit_2') handleHit('2B');
+            else if (cmd === 'hit_3') handleHit('3B');
+            else if (cmd === 'hit_hr') handleHit('HR');
+            else if (cmd === 'error') {
+                const key = getCurrentTeamKey();
+                state.errors[key === 'v' ? 'h' : 'v']++;
+                logCommand("失策（エラー）");
+                updateDisplay();
+            }
+            else if (cmd === 'run_plus') {
+                addScore(1);
+                logCommand("1点追加");
+            }
+            else if (cmd === 'change') nextHalfInning();
+            else if (cmd === 'clear_bso') {
+                resetBSO();
+                logCommand("BSOカウントリセット");
+                updateDisplay();
+            }
+        }
+
+        // --- LINE EXPORT & MODAL CONTROL ---
+        function openLineModal() {
+            const vName = document.getElementById('team-v-name').value || "先攻";
+            const hName = document.getElementById('team-h-name').value || "後攻";
+            const totals = calculateTotals();
+            const now = new Date().toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+            let maxInningPlayed = 1;
+            for (let i = MAX_INNINGS - 1; i >= 0; i--) {
+                if (state.scores.v[i] !== null || state.scores.h[i] !== null) {
+                    maxInningPlayed = i + 1;
+                    break;
+                }
+            }
+
+            let text = `⚾ 【野球試合経過・結果】\n📅 ${now}\n\n`;
+
+            // スコアボードテキスト構築
+            let headerStr = "チーム | ";
+            for (let i = 1; i <= maxInningPlayed; i++) {
+                headerStr += `${i} `;
+            }
+            headerStr += "| R  H  E\n";
+            headerStr += "----------------------------\n";
+
+            let vRow = `${vName.padEnd(4, ' ')} | `;
+            for (let i = 0; i < maxInningPlayed; i++) {
+                const val = state.scores.v[i];
+                vRow += `${val !== null ? val : '-'} `;
+            }
+            vRow += `| ${totals.vTotal}  ${state.hits.v}  ${state.errors.v}\n`;
+
+            let hRow = `${hName.padEnd(4, ' ')} | `;
+            for (let i = 0; i < maxInningPlayed; i++) {
+                const val = state.scores.h[i];
+                hRow += `${val !== null ? val : '-'} `;
+            }
+            hRow += `| ${totals.hTotal}  ${state.hits.h}  ${state.errors.h}\n\n`;
+
+            text += headerStr + vRow + hRow;
+
+            if (state.isGameSet) {
+                text += `🏆 試合終了\n`;
+                if (totals.vTotal > totals.hTotal) {
+                    text += `勝: ${vName} (${totals.vTotal} - ${totals.hTotal})\n`;
+                } else if (totals.hTotal > totals.vTotal) {
+                    text += `勝: ${hName} (${totals.hTotal} - ${totals.vTotal})\n`;
+                } else {
+                    text += `引き分け (${totals.vTotal} - ${totals.hTotal})\n`;
+                }
+            } else {
+                text += `現在の状況: ${state.inning}回${state.isTop ? '表' : '裏'}\n`;
+            }
+
+            // 直近ログ抜粋
+            text += `\n📝 【直近の経過ログ】\n`;
+            const logContainer = document.getElementById('command-log');
+            const logItems = Array.from(logContainer.children).slice(0, 5);
+            logItems.forEach(item => {
+                if (!item.classList.contains('italic')) {
+                    text += `・${item.innerText}\n`;
+                }
+            });
+
+            document.getElementById('line-export-text').value = text;
+            document.getElementById('line-modal').classList.remove('hidden');
+        }
+
+        function closeLineModal() {
+            document.getElementById('line-modal').classList.add('hidden');
+        }
+
+        function copyLineText() {
+            const textarea = document.getElementById('line-export-text');
+            textarea.select();
+            document.execCommand('copy');
+            alert("LINE用テキストをクリップボードにコピーしました！");
+        }
+
+        // --- GAMESET MODAL CONTROL ---
+        function openGamesetModal() {
+            document.getElementById('gameset-modal').classList.remove('hidden');
+        }
+
+        function closeGamesetModal() {
+            document.getElementById('gameset-modal').classList.add('hidden');
+        }
+
+        function confirmGameSet() {
+            closeGamesetModal();
+            triggerGameSet("手動で試合終了が選択されました");
+        }
+
+        // --- SPEECH RECOGNITION (ENHANCED WITH SPEECH LOGGING) ---
+        let recognition = null;
+
+        function checkHttpsRequirements() {
+            const isLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+            if (location.protocol !== 'https:' && !isLocalhost) {
+                const warningEl = document.getElementById('https-warning');
+                if (warningEl) warningEl.classList.remove('hidden');
+            }
+        }
+
+        function toggleSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                showLogNotification("お使いのブラウザは音声認識機能に対応していません。SafariまたはChromeをご利用ください。");
+                return;
+            }
+
+            if (state.isListening) {
+                stopSpeechRecognition();
+                return;
+            }
+
+            initSpeechRecognition(SpeechRecognition);
+        }
+
+        function initSpeechRecognition(SpeechRecognition) {
+            try {
+                if (!recognition) {
+                    recognition = new SpeechRecognition();
+                    recognition.lang = 'ja-JP';
+                    recognition.continuous = true;
+                    recognition.interimResults = false;
+
+                    recognition.onstart = () => {
+                        setListeningUI(true);
+                        logCommand("音声認識を開始しました");
+                    };
+
+                    recognition.onend = () => {
+                        if (state.isListening) {
+                            try {
+                                recognition.start();
+                            } catch (e) {
+                                setListeningUI(false);
+                            }
+                        } else {
+                            setListeningUI(false);
+                        }
+                    };
+
+                    recognition.onresult = (e) => {
+                        const transcript = e.results[e.results.length - 1][0].transcript.trim();
+                        document.getElementById('transcript-preview').innerText = `「${transcript}」`;
+                        logCommand(`【音声】「${transcript}」`);
+                        processVoiceText(transcript);
+                    };
+
+                    recognition.onerror = (err) => {
+                        console.error("Speech error:", err.error);
+                        setListeningUI(false);
+                        
+                        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+                            showLogNotification("マイクの利用が拒否されました。設定でマイク使用を「許可」してください。");
+                            logCommand("マイクアクセスが拒否されました");
+                        } else if (err.error !== 'no-speech') {
+                            showLogNotification(`音声認識エラー: ${err.error}`);
+                        }
+                    };
+                }
+
+                state.isListening = true;
+                recognition.start();
+            } catch (err) {
+                console.error("音声認識起動失敗:", err);
+                setListeningUI(false);
+                if (err.name === 'InvalidStateError') {
+                    setListeningUI(true);
+                }
+            }
+        }
+
+        function stopSpeechRecognition() {
+            state.isListening = false;
+            if (recognition) {
+                try {
+                    recognition.stop();
+                } catch(e) {}
+            }
+            setListeningUI(false);
+            logCommand("音声認識を停止しました");
+        }
+
+        function setListeningUI(active) {
+            state.isListening = active;
+            const btn = document.getElementById('mic-btn');
+            const status = document.getElementById('voice-status');
+            const pulse = document.getElementById('pulse-bg');
+
+            if (active) {
+                btn.className = "w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center text-2xl shadow-lg shadow-red-900/50 transition-all transform active:scale-95 border-4 border-slate-900 mic-active cursor-pointer";
+                status.innerText = "音声を聞き取り中（もう一度押すと停止）";
+                status.className = "text-xs font-bold text-red-400 uppercase tracking-wider";
+                pulse.style.opacity = '1';
+            } else {
+                btn.className = "w-16 h-16 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center text-2xl shadow-lg shadow-emerald-950/60 transition-all transform active:scale-95 border-4 border-slate-900 cursor-pointer";
+                status.innerText = "マイクを押して音声操作開始";
+                status.className = "text-xs font-bold text-slate-400 uppercase tracking-wider";
+                pulse.style.opacity = '0';
+            }
+        }
+
+        function showLogNotification(msg) {
+            document.getElementById('transcript-preview').innerHTML = `<span class="text-red-400 text-xs">${msg}</span>`;
+        }
+
+        function processVoiceText(txt) {
+            const clean = txt.replace(/\s+/g, '');
+
+            if (clean.includes("ストライク")) addStrike();
+            else if (clean.includes("ボール")) addBall();
+            else if (clean.includes("アウト")) addOut();
+            else if (clean.includes("ホームラン") || clean.includes("本塁打")) handleCommand('hit_hr');
+            else if (clean.includes("3ベース") || clean.includes("三塁打")) handleCommand('hit_3');
+            else if (clean.includes("2ベース") || clean.includes("二塁打") || clean.includes("ツーベース")) handleCommand('hit_2');
+            else if (clean.includes("ヒット") || clean.includes("単打") || clean.includes("安打")) handleCommand('hit_1');
+            else if (clean.includes("フォアボール") || clean.includes("四球") || clean.includes("デッドボール") || clean.includes("死球")) {
+                advanceRunnersOnWalk();
+                resetBSO();
+            }
+            else if (clean.includes("エラー") || clean.includes("失策")) handleCommand('error');
+            else if (clean.includes("チェンジ") || clean.includes("交代")) nextHalfInning();
+            else if (clean.includes("ゲームセット") || clean.includes("試合終了")) openGamesetModal();
+            else if (clean.includes("1点") || clean.includes("一点")) addScore(1);
+            else if (clean.includes("2点") || clean.includes("二点")) addScore(2);
+            else if (clean.includes("3点") || clean.includes("三点")) addScore(3);
+            else if (clean.includes("4点") || clean.includes("四点")) addScore(4);
+        }
+
+        // --- HIT MENU TOGGLE ---
+        function toggleHitMenu() {
+            const menu = document.getElementById('hit-menu');
+            menu.classList.toggle('hidden');
+        }
+
+        function closeHitMenu() {
+            const menu = document.getElementById('hit-menu');
+            if (menu) menu.classList.add('hidden');
+        }
+
+        document.addEventListener('click', (e) => {
+            const hitMenuBtn = document.getElementById('hit-menu-btn');
+            const hitMenu = document.getElementById('hit-menu');
+            if (hitMenu && hitMenuBtn && !hitMenuBtn.contains(e.target) && !hitMenu.contains(e.target)) {
+                hitMenu.classList.add('hidden');
+            }
+        });
+
+        // Reset Modal Events
+        const resetModal = document.getElementById('reset-modal');
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            resetModal.classList.remove('hidden');
+        });
+        document.getElementById('cancel-reset-btn').addEventListener('click', () => {
+            resetModal.classList.add('hidden');
+        });
+        document.getElementById('confirm-reset-btn').addEventListener('click', () => {
+            resetGame();
+            resetModal.classList.add('hidden');
+        });
+
+        function resetGame() {
+            state.inning = 1;
+            state.isTop = true;
+            state.isGameSet = false;
+            state.balls = 0;
+            state.strikes = 0;
+            state.outs = 0;
+            state.runners = [false, false, false];
+            state.scores.v = Array(MAX_INNINGS).fill(null);
+            state.scores.h = Array(MAX_INNINGS).fill(null);
+            state.hits = { v: 0, h: 0 };
+            state.errors = { v: 0, h: 0 };
+            document.getElementById('command-log').innerHTML = '<div class="text-slate-600 italic">操作ログおよび音声発話内容がここに表示されます</div>';
+            logCommand("スコアボードをリセットしました");
+            updateDisplay();
+        }
+
+        // Help Modal Events
+        document.getElementById('help-btn').addEventListener('click', () => {
+            document.getElementById('help-modal').classList.remove('hidden');
+        });
+        document.getElementById('close-modal-btn').addEventListener('click', () => {
+            document.getElementById('help-modal').classList.add('hidden');
+        });
+
+        document.getElementById('clear-log-btn').addEventListener('click', () => {
+            document.getElementById('command-log').innerHTML = '<div class="text-slate-600 italic">操作ログおよび音声発話内容がここに表示されます</div>';
+        });
+
+        // Realtime Clock
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock-display').innerText = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+        }, 1000);
+
+        // Initial setup
+        window.addEventListener('DOMContentLoaded', () => {
+            updateDisplay();
+            checkHttpsRequirements();
+        });
+    </script>
+</body>
+</html>
